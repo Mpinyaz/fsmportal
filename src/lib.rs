@@ -23,10 +23,8 @@ pub enum CallEvent {
 pub enum CallError {
     UnexpectedEvent { state: CallState, event: CallEvent },
     TransitionNotFound { from: CallState, event: CallEvent },
-    StateMachineNotInitialized,
 }
 
-// Define the transition function type signature.
 type Transition<E> = fn(&mut StateMachine, &E) -> Result<(), CallError>;
 
 pub struct StateMachine {

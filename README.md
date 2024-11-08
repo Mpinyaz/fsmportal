@@ -1,4 +1,4 @@
-# Rust State Machine
+# FSM Call Portal
 
 This project is a Rust-based state machine to model a simple call lifecycle, transitioning between states like `Idle`, `Dialing`, `Ringing`, `Connected`, and `Disconnected` in response to specific events. It uses closures to define transitions and supports flexible state changes.
 
@@ -7,8 +7,6 @@ This project is a Rust-based state machine to model a simple call lifecycle, tra
 - [Overview](#overview)
 - [Features](#features)
 - [Usage](#usage)
-- [Testing](#testing)
-- [License](#license)
 
 ## Overview
 
