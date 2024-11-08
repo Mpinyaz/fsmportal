@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use std::fmt::Debug;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -27,50 +26,45 @@ pub enum CallError {
     StateMachineNotInitialized,
 }
 
-// Updated type signature to work directly with StateMachine
-type Transition<'a, E> = Box<dyn Fn(&mut StateMachine, &E) -> Result<(), CallError> + 'a>;
-type Transitions<'a, E> = HashMap<(&'a CallState, &'a E), Transition<'a, E>>;
+// Define the transition function type signature.
+type Transition<E> = fn(&mut StateMachine, &E) -> Result<(), CallError>;
 
 pub struct StateMachine {
     current_state: CallState,
     context: HashMap<String, usize>,
-    transitions: Transitions<'static, CallEvent>,
+    transitions: HashMap<(CallState, CallEvent), Transition<CallEvent>>,
 }
 
 impl StateMachine {
     pub fn new(context: HashMap<String, usize>) -> Self {
-        let mut transitions = Transitions::new();
+        let mut transitions: HashMap<(CallState, CallEvent), Transition<CallEvent>> =
+            HashMap::new();
+
+        transitions.insert((CallState::Idle, CallEvent::Dial), idle_to_dialing);
+        transitions.insert((CallState::Idle, CallEvent::Incoming), idle_to_ringing);
         transitions.insert(
-            (&CallState::Idle, &CallEvent::Dial),
-            Box::new(Self::idle_to_dialing),
+            (CallState::Dialing, CallEvent::HangUp),
+            dialing_to_disconnected,
         );
         transitions.insert(
-            (&CallState::Idle, &CallEvent::Incoming),
-            Box::new(Self::idle_to_ringing),
+            (CallState::Ringing, CallEvent::HangUp),
+            ringing_to_disconnected,
         );
         transitions.insert(
-            (&CallState::Dialing, &CallEvent::HangUp),
-            Box::new(Self::dialing_to_disconnected),
+            (CallState::Dialing, CallEvent::Answer),
+            dialing_to_connected,
         );
         transitions.insert(
-            (&CallState::Ringing, &CallEvent::HangUp),
-            Box::new(Self::ringing_to_disconnected),
+            (CallState::Ringing, CallEvent::Answer),
+            ringing_to_connected,
         );
         transitions.insert(
-            (&CallState::Dialing, &CallEvent::Answer),
-            Box::new(Self::dialing_to_connected),
+            (CallState::Connected, CallEvent::HangUp),
+            connected_to_disconnected,
         );
         transitions.insert(
-            (&CallState::Ringing, &CallEvent::Answer),
-            Box::new(Self::ringing_to_connected),
-        );
-        transitions.insert(
-            (&CallState::Connected, &CallEvent::HangUp),
-            Box::new(Self::connected_to_disconnected),
-        );
-        transitions.insert(
-            (&CallState::Disconnected, &CallEvent::Reset),
-            Box::new(Self::disconnected_to_idle),
+            (CallState::Disconnected, CallEvent::Reset),
+            disconnected_to_idle,
         );
 
         StateMachine {
@@ -81,8 +75,11 @@ impl StateMachine {
     }
 
     pub fn handle_event(&mut self, event: &CallEvent) -> Result<(), CallError> {
-        // Look for a matching transition based on current_state and event
-        if let Some(transition) = self.transitions.get(&(&self.current_state.clone(), event)) {
+        if let Some(&transition) = self
+            .transitions
+            .get(&(self.current_state.clone(), event.clone()))
+        {
+            // Call the transition function.
             transition(self, event)
         } else {
             Err(CallError::TransitionNotFound {
@@ -91,52 +88,127 @@ impl StateMachine {
             })
         }
     }
+}
 
-    fn idle_to_dialing(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Idle to Dialing");
-        self.current_state = CallState::Dialing;
-        Ok(())
+fn idle_to_dialing(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Idle to Dialing");
+    sm.current_state = CallState::Dialing;
+    Ok(())
+}
+
+fn idle_to_ringing(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Idle to Ringing");
+    sm.current_state = CallState::Ringing;
+    Ok(())
+}
+
+fn dialing_to_disconnected(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Dialing to Disconnected");
+    sm.current_state = CallState::Disconnected;
+    Ok(())
+}
+
+fn ringing_to_disconnected(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Ringing to Disconnected");
+    sm.current_state = CallState::Disconnected;
+    Ok(())
+}
+
+fn dialing_to_connected(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Dialing to Connected");
+    sm.current_state = CallState::Connected;
+    Ok(())
+}
+
+fn ringing_to_connected(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Ringing to Connected");
+    sm.current_state = CallState::Connected;
+    Ok(())
+}
+
+fn connected_to_disconnected(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Connected to Disconnected");
+    sm.current_state = CallState::Disconnected;
+    Ok(())
+}
+
+fn disconnected_to_idle(sm: &mut StateMachine, _event: &CallEvent) -> Result<(), CallError> {
+    println!("Transitioning from Disconnected to Idle");
+    sm.current_state = CallState::Idle;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_context() -> HashMap<String, usize> {
+        HashMap::new() // Customize as needed
     }
 
-    fn idle_to_ringing(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Idle to Ringing");
-        self.current_state = CallState::Ringing;
-        Ok(())
+    #[test]
+    fn test_idle_to_dialing() {
+        let mut sm = StateMachine::new(setup_context());
+        assert_eq!(sm.current_state, CallState::Idle);
+
+        sm.handle_event(&CallEvent::Dial)
+            .expect("Failed to transition from Idle to Dialing");
+        assert_eq!(sm.current_state, CallState::Dialing);
     }
 
-    fn dialing_to_disconnected(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Dialing to Disconnected");
-        self.current_state = CallState::Disconnected;
-        Ok(())
+    #[test]
+    fn test_idle_to_ringing() {
+        let mut sm = StateMachine::new(setup_context());
+        assert_eq!(sm.current_state, CallState::Idle);
+
+        sm.handle_event(&CallEvent::Incoming)
+            .expect("Failed to transition from Idle to Ringing");
+        assert_eq!(sm.current_state, CallState::Ringing);
     }
 
-    fn ringing_to_disconnected(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Ringing to Disconnected");
-        self.current_state = CallState::Disconnected;
-        Ok(())
+    #[test]
+    fn test_dialing_to_connected() {
+        let mut sm = StateMachine::new(setup_context());
+        sm.current_state = CallState::Dialing;
+
+        sm.handle_event(&CallEvent::Answer)
+            .expect("Failed to transition from Dialing to Connected");
+        assert_eq!(sm.current_state, CallState::Connected);
     }
 
-    fn dialing_to_connected(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Dialing to Connected");
-        self.current_state = CallState::Connected;
-        Ok(())
+    #[test]
+    fn test_connected_to_disconnected() {
+        let mut sm = StateMachine::new(setup_context());
+        sm.current_state = CallState::Connected;
+
+        sm.handle_event(&CallEvent::HangUp)
+            .expect("Failed to transition from Connected to Disconnected");
+        assert_eq!(sm.current_state, CallState::Disconnected);
     }
 
-    fn ringing_to_connected(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Ringing to Connected");
-        self.current_state = CallState::Connected;
-        Ok(())
+    #[test]
+    fn test_disconnected_to_idle() {
+        let mut sm = StateMachine::new(setup_context());
+        sm.current_state = CallState::Disconnected;
+
+        sm.handle_event(&CallEvent::Reset)
+            .expect("Failed to transition from Disconnected to Idle");
+        assert_eq!(sm.current_state, CallState::Idle);
     }
 
-    fn connected_to_disconnected(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Connected to Disconnected");
-        self.current_state = CallState::Disconnected;
-        Ok(())
-    }
+    #[test]
+    fn test_invalid_transition() {
+        let mut sm = StateMachine::new(setup_context());
+        assert_eq!(sm.current_state, CallState::Idle);
 
-    fn disconnected_to_idle(&mut self, _event: &CallEvent) -> Result<(), CallError> {
-        println!("Transitioning from Disconnected to Idle");
-        self.current_state = CallState::Idle;
-        Ok(())
+        let result = sm.handle_event(&CallEvent::Answer);
+        assert!(result.is_err());
+
+        if let Err(CallError::TransitionNotFound { from, event }) = result {
+            assert_eq!(from, CallState::Idle);
+            assert_eq!(event, CallEvent::Answer);
+        } else {
+            panic!("Expected TransitionNotFound error, got {:?}", result);
+        }
     }
 }
