@@ -1,4 +1,4 @@
-mod generic;
+pub mod generic;
 use generic::{Event, Response, State, StateMachine};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -86,19 +86,19 @@ mod tests {
     fn test_valid_transitions() {
         let mut sm = init_state_machine();
 
-        assert_eq!(sm.get_current_state(), &CallState::Idle);
+        assert_eq!(sm.get_current_state().unwrap(), &CallState::Idle);
 
         sm.handle_event(&CallEvent::Dial)
             .expect("Dial event should succeed");
-        assert_eq!(sm.get_current_state(), &CallState::Dialing);
+        assert_eq!(sm.get_current_state().unwrap(), &CallState::Dialing);
 
         sm.handle_event(&CallEvent::Answer)
             .expect("Answer event should succeed");
-        assert_eq!(sm.get_current_state(), &CallState::Connected);
+        assert_eq!(sm.get_current_state().unwrap(), &CallState::Connected);
 
         sm.handle_event(&CallEvent::HangUp)
             .expect("HangUp event should succeed");
-        assert_eq!(sm.get_current_state(), &CallState::Disconnected);
+        assert_eq!(sm.get_current_state().unwrap(), &CallState::Disconnected);
     }
 
     #[test]
@@ -110,6 +110,6 @@ mod tests {
             result,
             Err(StateMachineError::TransitionNotFound { .. })
         ));
-        assert_eq!(sm.get_current_state(), &CallState::Idle);
+        assert_eq!(sm.get_current_state().unwrap(), &CallState::Idle);
     }
 }

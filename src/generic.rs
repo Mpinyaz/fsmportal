@@ -10,6 +10,7 @@ pub trait Event: Clone + Debug + Eq + Hash {}
 pub enum StateMachineError<S, E> {
     UnexpectedEvent { state: S, event: E },
     TransitionNotFound { from: S, event: E },
+    NotInitialized,
 }
 
 pub enum Response<S> {
@@ -34,9 +35,16 @@ where
     }
 }
 
-pub trait Stateful<S: Clone + Debug + Eq + Hash, CTX, E: Debug> {
-    fn on_enter(&self, event: &E);
+pub trait Stateful<S, CTX, E>
+where
+    S: State,
+    E: Debug + Event,
+{
+    fn on_enter(&self, event: &E)
+        -> Result<TransitionFunction<S, E, CTX>, StateMachineError<S, E>>;
+
     fn handle_event(&mut self, event: &E) -> Result<Response<S>, StateMachineError<S, E>>;
+
     fn on_exit(&self);
 }
 pub type TransitionFunction<S, E, C> = Arc<
@@ -49,7 +57,7 @@ where
     S: State,
     E: Event,
 {
-    current_state: S,
+    current_state: Option<S>,
     context: C,
     transitions: HashMap<(S, E), TransitionFunction<S, E, C>>,
 }
@@ -61,7 +69,7 @@ where
 {
     pub fn new(initial_state: S, context: C) -> Self {
         StateMachine {
-            current_state: initial_state,
+            current_state: Some(initial_state),
             context,
             transitions: HashMap::new(),
         }
@@ -77,8 +85,11 @@ where
         self.transitions.insert((from, event), Arc::new(transition));
     }
 
-    pub fn get_current_state(&self) -> &S {
-        &self.current_state
+    pub fn get_current_state(&self) -> Result<&S, StateMachineError<S, E>> {
+        match &self.current_state {
+            Some(t) => Ok(t),
+            None => Err(StateMachineError::NotInitialized),
+        }
     }
 
     pub fn get_context(&self) -> &C {
@@ -94,39 +105,39 @@ where
     S: State,
     E: Event,
 {
-    fn on_enter(&self, event: &E) {
+    fn on_enter(&self, event: &E) -> Result<TransitionFunction<S, E, C>, StateMachineError<S, E>> {
+        let current_state = self.get_current_state()?.clone();
+
         println!("Transition initiated, Call Event: {:?} triggered", event);
+
+        match self
+            .transitions
+            .get(&(current_state.clone(), event.clone()))
+        {
+            Some(t) => Ok(t.clone()),
+            None => Err(StateMachineError::TransitionNotFound {
+                from: current_state,
+                event: event.clone(),
+            }),
+        }
     }
 
     fn handle_event(&mut self, event: &E) -> Result<Response<S>, StateMachineError<S, E>> {
-        let current_state = self.current_state.clone();
-        let event_clone = event.clone();
-
-        let transition = match self
-            .transitions
-            .get(&(current_state.clone(), event_clone.clone()))
-        {
-            Some(t) => t.clone(),
-            None => {
-                return Err(StateMachineError::TransitionNotFound {
-                    from: current_state,
-                    event: event_clone,
-                })
-            }
+        let transition = match self.on_enter(event) {
+            Ok(t) => t,
+            Err(e) => return Err(e),
         };
-
         self.on_exit();
 
         match transition(self, event)? {
             Response::Handled => Ok(Response::Handled),
             Response::Transition(new_state) => {
-                self.current_state = new_state.clone();
-                self.on_enter(event);
+                self.current_state = Some(new_state.clone());
                 Ok(Response::Transition(new_state))
             }
             Response::Super => Err(StateMachineError::UnexpectedEvent {
-                state: current_state,
-                event: event_clone,
+                state: self.get_current_state()?.clone(),
+                event: event.clone(),
             }),
         }
     }
