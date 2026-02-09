@@ -3,8 +3,9 @@ use generic::{Event, Response, State, StateMachine};
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum CallState {
+    #[default]
     Idle,
     Dialing,
     Ringing,
@@ -24,8 +25,8 @@ pub enum CallEvent {
 impl Event for CallEvent {}
 impl State for CallState {}
 
-pub fn init_state_machine() -> StateMachine<CallState, CallEvent> {
-    let mut sm = StateMachine::new(CallState::Idle, HashMap::new());
+pub fn init_state_machine(ctx: HashMap<String, usize>) -> StateMachine<CallState, CallEvent> {
+    let mut sm = StateMachine::new(ctx);
 
     // Transition from Idle to Dialing on Dial event
     sm.add_transition(CallState::Idle, CallEvent::Dial, |_sm, _event| {
@@ -84,7 +85,8 @@ mod tests {
 
     #[test]
     fn test_valid_transitions() {
-        let mut sm = init_state_machine();
+        let ctx = HashMap::<String, usize>::new();
+        let mut sm = init_state_machine(ctx);
 
         assert_eq!(sm.get_current_state().unwrap(), &CallState::Idle);
 
@@ -103,7 +105,8 @@ mod tests {
 
     #[test]
     fn test_invalid_transition() {
-        let mut sm = init_state_machine();
+        let ctx = HashMap::<String, usize>::new();
+        let mut sm = init_state_machine(ctx);
 
         let result = sm.handle_event(&CallEvent::Answer);
         assert!(matches!(
