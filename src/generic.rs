@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::Arc;
 
-pub trait State: Clone + Debug + Eq + Hash {}
+pub trait State: Clone + Debug + Eq + Hash + Default {}
 pub trait Event: Clone + Debug + Eq + Hash {}
 
 #[derive(Debug)]
@@ -52,6 +52,7 @@ pub type TransitionFunction<S, E, C> = Arc<
         + Send
         + Sync,
 >;
+
 pub struct StateMachine<S, E, C = HashMap<String, usize>>
 where
     S: State,
@@ -61,17 +62,32 @@ where
     context: C,
     transitions: HashMap<(S, E), TransitionFunction<S, E, C>>,
 }
-
+impl<S, E, C> Default for StateMachine<S, E, C>
+where
+    S: State + Default,
+    E: Event,
+    C: Default,
+{
+    fn default() -> Self {
+        StateMachine {
+            current_state: Some(S::default()),
+            context: C::default(),
+            transitions: HashMap::new(),
+        }
+    }
+}
 impl<S, E, C> StateMachine<S, E, C>
 where
     S: State,
     E: Event,
 {
-    pub fn new(initial_state: S, context: C) -> Self {
+    pub fn new(context: C) -> Self
+    where
+        C: Default,
+    {
         StateMachine {
-            current_state: Some(initial_state),
             context,
-            transitions: HashMap::new(),
+            ..Default::default()
         }
     }
 
@@ -123,10 +139,7 @@ where
     }
 
     fn handle_event(&mut self, event: &E) -> Result<Response<S>, StateMachineError<S, E>> {
-        let transition = match self.on_enter(event) {
-            Ok(t) => t,
-            Err(e) => return Err(e),
-        };
+        let transition = self.on_enter(event)?;
         self.on_exit();
 
         match transition(self, event)? {
